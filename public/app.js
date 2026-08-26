@@ -72,7 +72,7 @@ class SecureChat {
         this.checkForRoomInURL();
 
         window.addEventListener('resize', () => {
-            if (window.innerWidth > 768) {
+            if (!this.isMobile()) {
                 document.getElementById('main-container')?.classList.remove('chat-open');
             }
         });
@@ -85,6 +85,10 @@ class SecureChat {
             this.displaySystemMessage('⚠️ All messages auto-delete after 20 seconds');
             this.displaySystemMessage('📎 Use buttons below to attach files, photos, or location');
         }, 1000);
+    }
+
+    isMobile() {
+        return window.innerWidth < 576;
     }
 
     // Check if URL contains room parameter and auto-join
@@ -1158,9 +1162,9 @@ class SecureChat {
         list.innerHTML = filtered.map(c => {
             const last = this.getLastMessageForContact(c.userId);
             const activeClass = this.activeContactId === c.userId ? 'active' : '';
-            return `<div class="contact-item ${activeClass}" data-userid="${this.escapeAttr(c.userId)}">
-                <div class="contact-name">${this.escapeHtml(c.label)}</div>
-                <div class="contact-meta">${last ? this.escapeHtml(last) : 'No messages yet'}</div>
+            return `<div class="contact-item ${activeClass}" data-userid="${this.escapeAttr(c.userId)}" role="option" aria-selected="${this.activeContactId === c.userId}">
+                <div class="contact-item__name">${this.escapeHtml(c.label)}</div>
+                <div class="contact-item__meta">${last ? this.escapeHtml(last) : 'No messages yet'}</div>
             </div>`;
         }).join('');
         if (count) count.textContent = String(filtered.length);
@@ -1212,13 +1216,13 @@ class SecureChat {
     }
 
     showMobileChat() {
-        if (window.innerWidth <= 768) {
+        if (this.isMobile()) {
             document.getElementById('main-container')?.classList.add('chat-open');
         }
     }
 
     showMobileContacts() {
-        if (window.innerWidth <= 768) {
+        if (this.isMobile()) {
             document.getElementById('main-container')?.classList.remove('chat-open');
         }
     }
@@ -1259,7 +1263,7 @@ class SecureChat {
         const messageDiv = document.createElement('div');
         messageDiv.className = 'message';
         messageDiv.setAttribute('data-message-id', msg.id);
-        
+
         const timestamp = new Date(msg.timestamp).toLocaleTimeString();
         const isOwn = msg.senderId === this.userId;
         const senderLabel = msg.senderLabel || (isOwn ? 'You' : this.getContactLabel(msg.userId));
@@ -1269,7 +1273,7 @@ class SecureChat {
             msg.signature,
             msg.sequenceNumber
         );
-        
+
         let messageContent = '';
         if (msg.messageType === 'attachment' || msg.messageType === 'location') {
             try {
@@ -1278,7 +1282,7 @@ class SecureChat {
                 if (msg.messageType === 'attachment' && parsed.attachment) {
                     const att = parsed.attachment;
                     if (att.isPhoto || att.type.startsWith('image/')) {
-                        messageContent = `<div class="message-attachment"><img src="${this.sanitizeUrl(att.data)}" style="max-width: 300px; max-height: 300px; border-radius: 8px; margin: 8px 0;"><div class="attachment-info">📷 ${this.escapeAttr(att.name)} (${this.formatFileSize(att.size)})</div></div>`;
+                        messageContent = `<div class="message-attachment"><img src="${this.sanitizeUrl(att.data)}" style="max-width: 100%; height: auto; border-radius: 8px; margin: 8px 0;"><div class="attachment-info">📷 ${this.escapeAttr(att.name)} (${this.formatFileSize(att.size)})</div></div>`;
                     } else {
                         messageContent = `<div class="message-attachment"><a href="${this.sanitizeUrl(att.data)}" download="${this.escapeAttr(att.name)}" class="file-download">📎 ${this.escapeAttr(att.name)} (${this.formatFileSize(att.size)})</a></div>`;
                     }
@@ -1291,20 +1295,20 @@ class SecureChat {
                 // ignore parse errors
             }
         }
-        
+
         const cssClass = isOwn ? 'own' : 'other';
         messageDiv.className = `message ${cssClass}`;
-        
+
         messageDiv.innerHTML = `
-            <div class="message-header">
-                <span class="message-user">${this.escapeHtml(senderLabel)}</span>
-                <span class="message-time">${timestamp}</span>
-                <span class="message-status">${isOwn ? '✓ Sent' : '📥 Received'}</span>
+            <div class="message__header">
+                <span class="message__user">${this.escapeHtml(senderLabel)}</span>
+                <span class="message__time">${timestamp}</span>
+                <span class="message__status">${isOwn ? '✓ Sent' : '📥 Received'}</span>
             </div>
-            ${decryptedContent ? `<div class="message-content">${this.escapeHtml(decryptedContent)}</div>` : ''}
+            ${decryptedContent ? `<div class="message__content">${this.escapeHtml(decryptedContent)}</div>` : ''}
             ${messageContent}
         `;
-        
+
         container.appendChild(messageDiv);
         container.scrollTop = container.scrollHeight;
 
@@ -1379,17 +1383,17 @@ class SecureChat {
         const messagesContainer = document.getElementById('messages');
         const messageDiv = document.createElement('div');
         messageDiv.className = 'message system-message';
-        
+
         const timestamp = new Date().toLocaleTimeString();
-        
+
         messageDiv.innerHTML = `
-            <div class="message-header">
-                <span class="message-user">System</span>
-                <span class="message-time">${timestamp}</span>
+            <div class="message__header">
+                <span class="message__user">System</span>
+                <span class="message__time">${timestamp}</span>
             </div>
-            <div class="message-content">${this.escapeHtml(message)}</div>
+            <div class="message__content">${this.escapeHtml(message)}</div>
         `;
-        
+
         messagesContainer.appendChild(messageDiv);
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
     }
@@ -1502,63 +1506,47 @@ class SecureChat {
     scheduleMessageClear(messageElement, messageId) {
         const startTime = Date.now();
         const duration = 20 * 1000; // 20 seconds
-        
+
         // Add countdown timer
         const countdownElement = document.createElement('div');
-        countdownElement.className = 'message-countdown';
-        countdownElement.style.cssText = `
-            position: absolute;
-            top: 4px;
-            right: 4px;
-            font-size: 10px;
-            color: #666666;
-            background-color: rgba(0,0,0,0.7);
-            padding: 2px 6px;
-            border-radius: 3px;
-            z-index: 10;
-        `;
+        countdownElement.className = 'message__countdown';
         messageElement.style.position = 'relative';
         messageElement.appendChild(countdownElement);
-        
+
         // Update countdown every second
         const countdownInterval = setInterval(() => {
             const elapsed = Date.now() - startTime;
             const remaining = Math.max(0, duration - elapsed);
             const minutes = Math.floor(remaining / 60000);
             const seconds = Math.floor((remaining % 60000) / 1000);
-            
+
             countdownElement.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-            
+
             // Change color as time runs out
-            if (remaining < 5000) { // Last 5 seconds
-                countdownElement.style.color = '#ff6666';
-                countdownElement.style.borderColor = '#ff6666';
-                countdownElement.classList.add('danger');
-            } else if (remaining < 10000) { // Last 10 seconds
-                countdownElement.style.color = '#ffaa00';
-                countdownElement.style.borderColor = '#ffaa00';
-                countdownElement.classList.add('warning');
+            if (remaining < 5000) {
+                countdownElement.classList.add('message__countdown--danger');
+            } else if (remaining < 10000) {
+                countdownElement.classList.add('message__countdown--warning');
             }
-            
+
             // Show notification at 10 seconds remaining
             if (remaining === 10000) {
                 this.showAutoClearNotification('Messages expiring in 10 seconds');
             }
         }, 1000);
-        
+
         setTimeout(() => {
             clearInterval(countdownInterval);
             if (messageElement && messageElement.parentNode) {
                 // Add fade-out effect
-                messageElement.style.transition = 'opacity 0.5s ease-out';
-                messageElement.style.opacity = '0';
-                
+                messageElement.classList.add('message--fade-out');
+
                 setTimeout(() => {
                     if (messageElement.parentNode) {
                         messageElement.parentNode.removeChild(messageElement);
                         console.log(`Message ${messageId} auto-cleared after 20 seconds`);
                     }
-                }, 500); // Wait for fade-out animation
+                }, 500);
             }
         }, duration);
     }

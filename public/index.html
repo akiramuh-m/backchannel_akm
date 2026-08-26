@@ -9,538 +9,164 @@
     <title>BackChannel</title>
     <meta name="description" content="BackChannel - Secure anonymous communication platform">
     <meta name="robots" content="noindex, nofollow">
+    <meta name="author" content="BackChannel">
     <link rel="stylesheet" href="style.css">
     <script src="/socket.io/socket.io.js"></script>
     <script src="crypto-js.min.js"></script>
-    <style>
-        * { box-sizing: border-box; }
-        html, body {
-            height: 100%;
-            margin: 0;
-            background: #0a0a0a;
-            color: #e5e5e5;
-            font-family: Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-        }
-        #app {
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-        #main-container {
-            flex: 1;
-            display: flex;
-            overflow: hidden;
-        }
-        #contacts-sidebar {
-            width: 340px;
-            min-width: 260px;
-            border-right: 1px solid #262626;
-            background: #0f0f0f;
-            display: flex;
-            flex-direction: column;
-        }
-        .sidebar-header {
-            padding: 16px;
-            border-bottom: 1px solid #262626;
-            background: #111111;
-        }
-        .sidebar-header h3 {
-            margin: 0 0 10px 0;
-            font-size: 18px;
-            color: #f5f5f5;
-        }
-        .sidebar-search input {
-            width: 100%;
-            padding: 8px;
-            border-radius: 8px;
-            border: 1px solid #333;
-            background: #1a1a1a;
-            color: #e5e5e5;
-        }
-        #contacts-list {
-            flex: 1;
-            overflow-y: auto;
-        }
-        .contact-item {
-            padding: 14px 16px;
-            border-bottom: 1px solid #1a1a1a;
-            cursor: pointer;
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-        .contact-item:hover { background: #151515; }
-        .contact-item.active { background: #1f1f1f; border-left: 3px solid #00a884; }
-        .contact-name {
-            font-size: 15px;
-            color: #f5f5f5;
-            font-weight: 500;
-        }
-        .contact-meta {
-            font-size: 12px;
-            color: #888;
-        }
-        #chat-area {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            background: #0a0a0a;
-            min-width: 0;
-        }
-        #chat-header {
-            padding: 12px 18px;
-            border-bottom: 1px solid #262626;
-            background: #111111;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-        #chat-header .avatar {
-            width: 38px;
-            height: 38px;
-            border-radius: 50%;
-            background: #00a884;
-            color: #fff;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 700;
-        }
-        #chat-header .header-info { flex: 1; }
-        #chat-header .header-title { font-weight: 600; color: #f5f5f5; }
-        #chat-header .header-sub { font-size: 12px; color: #888; }
-        #chat-container {
-            flex: 1;
-            overflow-y: auto;
-            padding: 14px;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-        .message {
-            max-width: 72%;
-            padding: 10px 12px;
-            border-radius: 12px;
-            background: #1a1a1a;
-            border: 1px solid #262626;
-            word-wrap: break-word;
-        }
-        .message.own {
-            align-self: flex-end;
-            background: #054640;
-            border-color: #073b34;
-        }
-        .message.other {
-            align-self: flex-start;
-            background: #1a1a1a;
-            border-color: #262626;
-        }
-        .message.system-message {
-            align-self: center;
-            background: transparent;
-            border: none;
-            color: #888;
-            font-size: 12px;
-        }
-        .message-header {
-            display: flex;
-            justify-content: space-between;
-            gap: 12px;
-            font-size: 11px;
-            color: #888;
-            margin-bottom: 4px;
-        }
-        .message-content {
-            font-size: 14px;
-            color: #e5e5e5;
-            white-space: pre-wrap;
-        }
-        #input-area {
-            padding: 10px 12px;
-            border-top: 1px solid #262626;
-            background: #111111;
-        }
-        #room-controls {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 8px;
-        }
-        #room-controls input {
-            flex: 1;
-            padding: 10px;
-            border-radius: 8px;
-            border: 1px solid #333;
-            background: #1a1a1a;
-            color: #e5e5e5;
-        }
-        #message-input-container {
-            display: flex;
-            gap: 8px;
-            align-items: flex-end;
-        }
-        #message-input {
-            flex: 1;
-            padding: 10px;
-            border-radius: 8px;
-            border: 1px solid #333;
-            background: #1a1a1a;
-            color: #e5e5e5;
-            min-height: 40px;
-            max-height: 120px;
-            resize: none;
-        }
-        .empty-state {
-            margin: auto;
-            color: #888;
-            text-align: center;
-        }
-        .typing-indicator {
-            padding: 6px 16px;
-            font-size: 12px;
-            color: #888;
-            min-height: 24px;
-            background: transparent;
-            border-top: 1px solid #1f1f1f;
-        }
-        #codename-screen {
-            position: fixed;
-            inset: 0;
-            background: #0a0a0a;
-            z-index: 1500;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .codename-card {
-            width: 340px;
-            max-width: 92vw;
-            padding: 24px;
-            border-radius: 16px;
-            background: #111111;
-            border: 1px solid #262626;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
-        }
-        .codename-card h2 {
-            margin: 0 0 8px;
-            color: #f5f5f5;
-        }
-        .codename-card p {
-            margin: 0 0 16px;
-            color: #888;
-            font-size: 13px;
-            line-height: 1.5;
-        }
-        .codename-card input {
-            width: 100%;
-            padding: 12px;
-            border-radius: 10px;
-            border: 1px solid #333;
-            background: #1a1a1a;
-            color: #e5e5e5;
-            margin-bottom: 10px;
-        }
-        .codename-card button {
-            width: 100%;
-            padding: 12px;
-            border-radius: 10px;
-            border: none;
-            background: #00a884;
-            color: white;
-            font-weight: 600;
-            cursor: pointer;
-        }
-        .hidden { display: none !important; }
-
-        /* Mobile responsiveness for inline styles */
-        @media (max-width: 768px) {
-            #contacts-sidebar {
-                width: 100% !important;
-                min-width: 0 !important;
-                max-width: 100%;
-                position: relative;
-                z-index: 3;
-            }
-
-            #chat-area {
-                display: none !important;
-            }
-
-            #main-container.chat-open #contacts-sidebar {
-                display: none !important;
-            }
-
-            #main-container.chat-open #chat-area {
-                display: flex !important;
-            }
-
-            .back-button {
-                display: inline-flex !important;
-            }
-
-            .message {
-                max-width: 85% !important;
-                padding: 8px 10px !important;
-                font-size: 13px;
-            }
-
-            .message-header {
-                font-size: 10px;
-                gap: 6px;
-            }
-
-            .message-content {
-                font-size: 13px;
-            }
-
-            #room-controls {
-                flex-direction: column !important;
-                gap: 6px;
-            }
-
-            #room-input {
-                font-size: 14px;
-                padding: 10px;
-            }
-
-            #message-input-container {
-                flex-direction: column !important;
-                gap: 8px;
-            }
-
-            #message-input {
-                min-height: 50px;
-                max-height: 100px;
-                font-size: 14px;
-                padding: 10px;
-            }
-
-            #send-btn {
-                width: 100%;
-                padding: 12px;
-                font-size: 14px;
-            }
-
-            #attachment-controls {
-                flex-direction: row;
-                justify-content: space-between;
-            }
-
-            #attach-file-btn, #take-photo-btn, #share-location-btn {
-                flex: 1;
-                min-height: 48px;
-                min-width: 48px;
-                font-size: 18px;
-                padding: 10px 8px;
-            }
-
-            .contact-item {
-                padding: 12px 14px;
-            }
-
-            .contact-name {
-                font-size: 14px;
-            }
-
-            .contact-meta {
-                font-size: 11px;
-                display: -webkit-box;
-                -webkit-line-clamp: 1;
-                -webkit-box-orient: vertical;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                white-space: normal;
-            }
-
-            #codename-screen {
-                padding: 0 20px;
-            }
-
-            .codename-card {
-                width: 100%;
-                max-width: 100%;
-                padding: 20px;
-            }
-
-            .codename-card h2 {
-                font-size: 18px;
-            }
-
-            .codename-card p {
-                font-size: 12px;
-                margin-bottom: 16px;
-            }
-
-            .codename-card input {
-                padding: 12px;
-                font-size: 15px;
-            }
-
-            .codename-card button {
-                padding: 14px;
-                font-size: 15px;
-            }
-        }
-
-        @media (max-width: 480px) {
-            .message {
-                max-width: 90% !important;
-            }
-
-            #contacts-sidebar {
-                width: 100% !important;
-            }
-
-            .contact-item {
-                padding: 10px 12px;
-            }
-
-            .menu-button {
-                min-height: 44px;
-                min-width: 44px;
-            }
-        }
-
-        /* Touch device optimizations */
-        @media (hover: none) and (pointer: coarse) {
-            button {
-                min-height: 44px;
-            }
-
-            .message-status {
-                padding: 2px 4px;
-            }
-
-            #attach-file-btn, #take-photo-btn, #share-location-btn {
-                min-height: 48px;
-                min-width: 48px;
-            }
-        }
-    </style>
 </head>
 <body>
-    <div id="codename-screen">
+    <!-- Codename Entry Screen -->
+    <div id="codename-screen" class="codename-screen" role="dialog" aria-label="Choose your codename">
         <div class="codename-card">
-            <h2>Choose your codename</h2>
-            <p>No passwords, no accounts, no stored credentials. Your identity here is your codename. We do not keep user data beyond this session.</p>
-            <input type="text" id="codename-input" placeholder="Enter codename" maxlength="32" autocomplete="off">
-            <button id="set-codename-btn">Enter BackChannel</button>
+            <h1 class="codename-card__title">Choose your codename</h1>
+            <p class="codename-card__desc">No passwords, no accounts, no stored credentials. Your identity here is your codename. We do not keep user data beyond this session.</p>
+            <input type="text" id="codename-input" class="codename-card__input" placeholder="Enter codename" maxlength="32" autocomplete="off" aria-label="Codename">
+            <button id="set-codename-btn" class="codename-card__btn">Enter BackChannel</button>
         </div>
     </div>
 
-    <div id="app">
-        <div id="status-bar">
-            <div id="logo">
-                <span class="logo-icon">◈</span>
-                <span class="logo-text">BackChannel</span>
+    <!-- Main Application -->
+    <div id="app" class="app">
+        <!-- Status Bar -->
+        <header id="status-bar" class="status-bar" role="banner">
+            <div class="status-bar__logo">
+                <span class="status-bar__logo-icon" aria-hidden="true">◈</span>
+                <span class="status-bar__logo-text">BackChannel</span>
             </div>
-            <div id="user-id" class="status-element">ID: Not assigned</div>
-            <div id="room-info" class="status-element">Not in room</div>
-            <div id="connection-security">
-                <span id="connection-status" class="security-detail">Disconnected</span>
-                <span id="connection-type" class="security-detail">Offline</span>
-                <span id="encryption-status" class="security-detail">Initializing...</span>
+            <div class="status-bar__info">
+                <span id="user-id" class="status-bar__item">ID: Not assigned</span>
+                <span id="room-info" class="status-bar__item">Not in room</span>
             </div>
-        </div>
+            <div class="status-bar__security">
+                <span id="connection-status" class="status-bar__security-item">Disconnected</span>
+                <span id="connection-type" class="status-bar__security-item">Offline</span>
+                <span id="encryption-status" class="status-bar__security-item">Initializing...</span>
+            </div>
+        </header>
 
-        <div id="main-container">
-            <div id="contacts-sidebar">
-                <div class="sidebar-header">
-                    <h3>Contacts <span class="contact-count">[<span id="contact-count">0</span>]</span></h3>
-                    <button id="menu-btn" class="menu-button" title="Menu">☰</button>
+        <!-- Main Content Area -->
+        <main id="main-container" class="main-container">
+            <!-- Contacts Sidebar -->
+            <aside id="contacts-sidebar" class="contacts-sidebar" aria-label="Contacts">
+                <div class="contacts-sidebar__header">
+                    <h2 class="contacts-sidebar__title">
+                        Contacts
+                        <span class="contacts-sidebar__count">[<span id="contact-count">0</span>]</span>
+                    </h2>
+                    <button id="menu-btn" class="menu-button" title="Menu" aria-label="Open menu">☰</button>
                 </div>
-                <div class="sidebar-search">
-                    <input type="text" id="contact-search" placeholder="Search contacts...">
+                <div class="contacts-sidebar__search">
+                    <input type="text" id="contact-search" class="contacts-sidebar__search-input" placeholder="Search contacts..." aria-label="Search contacts">
                 </div>
-                <div id="contacts-list"></div>
-            </div>
+                <div id="contacts-list" class="contacts-sidebar__list" role="listbox" aria-label="Contact list"></div>
+            </aside>
 
-            <div id="chat-area">
-                <div id="chat-header">
-                    <button id="back-to-contacts-btn" class="back-button" style="display:none;" title="Back to contacts">← Back</button>
-                    <div class="avatar" id="chat-header-avatar">?</div>
-                    <div class="header-info">
-                        <div id="room-title" class="header-title">Select a contact</div>
-                        <div id="room-subtitle" class="header-sub"></div>
+            <!-- Chat Area -->
+            <section id="chat-area" class="chat-area" aria-label="Chat">
+                <!-- Chat Header -->
+                <div class="chat-header">
+                    <button id="back-to-contacts-btn" class="back-button" title="Back to contacts" aria-label="Back to contacts">← Back</button>
+                    <div class="chat-header__avatar" id="chat-header-avatar">?</div>
+                    <div class="chat-header__info">
+                        <div id="room-title" class="chat-header__title">Select a contact</div>
+                        <div id="room-subtitle" class="chat-header__subtitle"></div>
                     </div>
-                    <div id="encryption-indicator">
-                        <span class="encryption-badge-small">🔐 Encryption and Disappearing messages Enabled (24h)</span>
+                    <div class="chat-header__encryption">
+                        <span class="encryption-badge">🔐 Encryption and Disappearing messages Enabled (24h)</span>
                     </div>
                 </div>
 
-                <div id="chat-container">
-                    <div id="messages"></div>
+                <!-- Messages Container -->
+                <div id="chat-container" class="chat-container">
+                    <div id="messages" class="messages" role="log" aria-live="polite"></div>
                     <div id="typing-indicator" class="typing-indicator" aria-live="polite"></div>
                 </div>
 
-                <div id="input-area">
-                    <div id="room-controls">
-                        <input type="text" id="room-input" placeholder="Enter contact ID or room code" maxlength="32">
-                        <button id="join-room-btn">Connect</button>
-                        <button id="new-room-btn">New Room</button>
-                        <button id="copy-room-btn" style="display:none;">📋 Copy</button>
-                        <button id="share-room-btn" style="display:none;">🔗 Share</button>
-                        <button id="end-room-btn" style="display:none;">End Session</button>
+                <!-- Input Area -->
+                <div class="input-area" role="form" aria-label="Message input">
+                    <!-- Room Controls -->
+                    <div class="room-controls">
+                        <input type="text" id="room-input" class="room-controls__input" placeholder="Enter contact ID or room code" maxlength="32" aria-label="Room code">
+                        <div class="room-controls__buttons">
+                            <button id="join-room-btn" class="btn btn--primary">Connect</button>
+                            <button id="new-room-btn" class="btn btn--secondary">New Room</button>
+                            <button id="copy-room-btn" class="btn btn--icon" style="display:none;" aria-label="Copy room code">📋 Copy</button>
+                            <button id="share-room-btn" class="btn btn--icon" style="display:none;" aria-label="Share room">🔗 Share</button>
+                            <button id="end-room-btn" class="btn btn--danger" style="display:none;">End Session</button>
+                        </div>
                     </div>
 
-                    <div id="message-input-container">
-                        <div id="attachment-controls">
-                            <button id="attach-file-btn" title="Attach File">📎</button>
-                            <button id="take-photo-btn" title="Take Photo / Select Image">📷</button>
-                            <button id="share-location-btn" title="Share Location">📍</button>
-                            <input type="file" id="file-input" style="display:none;" accept="*/*">
-                            <input type="file" id="photo-input" style="display:none;" accept="image/*" capture="environment">
-                            <input type="file" id="gallery-input" style="display:none;" accept="image/*">
-                        </div>
-                        <div id="photo-menu" class="photo-menu" style="display:none;">
-                            <button id="take-new-photo-btn">📸 Take Photo</button>
-                            <button id="choose-from-gallery-btn">🖼️ Choose from Gallery</button>
-                            <button id="cancel-photo-btn">✕ Cancel</button>
-                        </div>
-                        <div id="attachment-preview" style="display:none;"></div>
-                        <textarea id="message-input" placeholder="Type encrypted message..." maxlength="1000"></textarea>
-                        <button id="send-btn">Send</button>
+                    <!-- Attachment Controls -->
+                    <div class="attachment-controls">
+                        <button id="attach-file-btn" class="attachment-btn" title="Attach File" aria-label="Attach file">📎</button>
+                        <button id="take-photo-btn" class="attachment-btn" title="Take Photo / Select Image" aria-label="Take photo">📷</button>
+                        <button id="share-location-btn" class="attachment-btn" title="Share Location" aria-label="Share location">📍</button>
+                        <input type="file" id="file-input" class="visually-hidden" accept="*/*" aria-hidden="true">
+                        <input type="file" id="photo-input" class="visually-hidden" accept="image/*" capture="environment" aria-hidden="true">
+                        <input type="file" id="gallery-input" class="visually-hidden" accept="image/*" aria-hidden="true">
+                    </div>
+
+                    <!-- Photo Menu -->
+                    <div id="photo-menu" class="photo-menu" style="display:none;" role="menu">
+                        <button id="take-new-photo-btn" class="photo-menu__btn" role="menuitem">📸 Take Photo</button>
+                        <button id="choose-from-gallery-btn" class="photo-menu__btn" role="menuitem">🖼️ Choose from Gallery</button>
+                        <button id="cancel-photo-btn" class="photo-menu__btn photo-menu__btn--cancel" role="menuitem">✕ Cancel</button>
+                    </div>
+
+                    <!-- Attachment Preview -->
+                    <div id="attachment-preview" class="attachment-preview" style="display:none;"></div>
+
+                    <!-- Message Input -->
+                    <div class="message-input-container">
+                        <textarea id="message-input" class="message-input" placeholder="Type encrypted message..." maxlength="1000" aria-label="Message"></textarea>
+                        <button id="send-btn" class="send-btn" aria-label="Send message">Send</button>
                     </div>
                 </div>
-            </div>
-        </div>
+            </section>
+        </main>
     </div>
 
-    <div id="hamburger-menu" class="hamburger-menu" style="display:none;">
-        <div class="menu-header">
-            <h3>Menu</h3>
-            <button id="close-menu-btn" class="close-menu-btn">✕</button>
+    <!-- Hamburger Menu -->
+    <div id="hamburger-menu" class="hamburger-menu" style="display:none;" role="dialog" aria-label="Menu" aria-modal="true">
+        <div class="hamburger-menu__header">
+            <h2 class="hamburger-menu__title">Menu</h2>
+            <button id="close-menu-btn" class="hamburger-menu__close" aria-label="Close menu">✕</button>
         </div>
-        <div class="menu-content">
-            <div class="menu-section">
-                <h4>👤 Identity</h4>
-                <div class="menu-item">
-                    <span class="menu-label">Codename:</span>
-                    <span id="menu-codename" class="menu-value">Not set</span>
+        <nav class="hamburger-menu__content" aria-label="Menu options">
+            <div class="hamburger-menu__section">
+                <h3 class="hamburger-menu__section-title">👤 Identity</h3>
+                <div class="hamburger-menu__item">
+                    <span class="hamburger-menu__label">Codename:</span>
+                    <span id="menu-codename" class="hamburger-menu__value">Not set</span>
                 </div>
-                <div class="menu-item">
-                    <span class="menu-label">Connection:</span>
-                    <span id="menu-connection-status" class="menu-value">Disconnected</span>
+                <div class="hamburger-menu__item">
+                    <span class="hamburger-menu__label">Connection:</span>
+                    <span id="menu-connection-status" class="hamburger-menu__value">Disconnected</span>
                 </div>
-                <div class="menu-item">
-                    <span class="menu-label">Room:</span>
-                    <span id="menu-room-info" class="menu-value">Not in room</span>
+                <div class="hamburger-menu__item">
+                    <span class="hamburger-menu__label">Room:</span>
+                    <span id="menu-room-info" class="hamburger-menu__value">Not in room</span>
                 </div>
             </div>
-            <div class="menu-section">
-                <h4>📷 Camera & Media</h4>
-                <button id="menu-take-photo" class="menu-action-btn">📸 Take Photo</button>
-                <button id="menu-choose-photo" class="menu-action-btn">🖼️ Choose from Gallery</button>
-                <button id="menu-attach-file" class="menu-action-btn">📎 Attach File</button>
-                <button id="menu-share-location" class="menu-action-btn">📍 Share Location</button>
+            <div class="hamburger-menu__section">
+                <h3 class="hamburger-menu__section-title">📷 Camera & Media</h3>
+                <button id="menu-take-photo" class="hamburger-menu__action">📸 Take Photo</button>
+                <button id="menu-choose-photo" class="hamburger-menu__action">🖼️ Choose from Gallery</button>
+                <button id="menu-attach-file" class="hamburger-menu__action">📎 Attach File</button>
+                <button id="menu-share-location" class="hamburger-menu__action">📍 Share Location</button>
             </div>
-            <div class="menu-section">
-                <h4>🏠 Room Actions</h4>
-                <button id="menu-new-room" class="menu-action-btn">➕ Create New Room</button>
-                <button id="menu-copy-room" class="menu-action-btn" style="display:none;">📋 Copy Room Code</button>
-                <button id="menu-end-room" class="menu-action-btn" style="display:none;">🚪 End Room</button>
+            <div class="hamburger-menu__section">
+                <h3 class="hamburger-menu__section-title">🏠 Room Actions</h3>
+                <button id="menu-new-room" class="hamburger-menu__action">➕ Create New Room</button>
+                <button id="menu-copy-room" class="hamburger-menu__action" style="display:none;">📋 Copy Room Code</button>
+                <button id="menu-end-room" class="hamburger-menu__action" style="display:none;">🚪 End Room</button>
             </div>
-        </div>
+        </nav>
     </div>
+
+    <!-- Security Warnings -->
+    <div class="recording-warning" role="alert" aria-live="assertive">⚠️ Recording Detected</div>
+    <div class="camera-warning" role="alert" aria-live="assertive">⚠️ Camera Detected</div>
 
     <script src="app.js"></script>
 </body>
