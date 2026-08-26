@@ -9,12 +9,35 @@ const crypto = require('crypto');
 
 const app = express();
 const server = http.createServer(app);
+const allowedOrigin = process.env.ALLOWED_ORIGIN || `http://localhost:${process.env.PORT || 3000}`;
+
 const io = socketIo(server, {
   cors: {
-    origin: "*",
+    origin: allowedOrigin,
     methods: ["GET", "POST"]
   }
 });
+
+// Simple in-memory rate limiter
+const rateLimitStore = new Map();
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const RATE_LIMIT_MAX_REQUESTS = 30;
+
+function rateLimit(key) {
+  const now = Date.now();
+  const record = rateLimitStore.get(key) || { count: 0, resetAt: now + RATE_LIMIT_WINDOW_MS };
+  if (now > record.resetAt) {
+    record.count = 0;
+    record.resetAt = now + RATE_LIMIT_WINDOW_MS;
+  }
+  record.count++;
+  rateLimitStore.set(key, record);
+  return record.count <= RATE_LIMIT_MAX_REQUESTS;
+}
+
+function getClientIp(req) {
+  return req.ip || req.connection?.remoteAddress || 'unknown';
+}
 
 // Security middleware
 app.use(helmet({
@@ -22,16 +45,13 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
       connectSrc: ["'self'", "ws:", "wss:"],
-      // Prevent screen capture and recording
       mediaSrc: ["'none'"],
       objectSrc: ["'none'"],
       frameSrc: ["'none'"],
-      // Block external media and recording
       workerSrc: ["'self'"],
       childSrc: ["'self'"],
-      // Prevent data extraction
       baseUri: ["'self'"],
       formAction: ["'self'"]
     }
@@ -41,22 +61,19 @@ app.use(helmet({
     includeSubDomains: true,
     preload: true
   },
-  // Additional security headers
   crossOriginEmbedderPolicy: true,
   crossOriginOpenerPolicy: { policy: "same-origin" },
   crossOriginResourcePolicy: { policy: "same-origin" },
   referrerPolicy: { policy: "no-referrer" },
-  // Prevent clickjacking
   frameguard: { action: "deny" },
-  // Prevent MIME type sniffing
   noSniff: true,
-  // XSS protection
   xssFilter: true
 }));
 
-app.use(cors());
+app.use(cors({ origin: allowedOrigin, credentials: true }));
 app.use(compression());
-app.use(express.json());
+app.use(express.json({ limit: '512kb' }));
+app.use(express.urlencoded({ extended: true, limit: '512kb' }));
 app.use(express.static('public'));
 
 // Privacy headers
@@ -66,30 +83,28 @@ app.use((req, res, next) => {
   res.setHeader('X-XSS-Protection', '1; mode=block');
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=(), display-capture=()');
-  
-  // Additional anti-screenshot headers
   res.setHeader('X-Screenshot-Protection', 'enabled');
-  res.setHeader('X-Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:; media-src 'none'; object-src 'none'; frame-src 'none';");
-  
-  // Prevent caching of sensitive content
+  res.setHeader('X-Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:; media-src 'none'; object-src 'none'; frame-src 'none';");
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
-  
-  // Prevent screen capture
   res.setHeader('X-Display-Capture', 'deny');
-  res.setHeader('X-Screen-Recording', 'deny');
-  
+  res.setHeader('X-Recording', 'deny');
   next();
 });
 
 // Store active sessions (minimal data)
 const activeSessions = new Map();
 const chatRooms = new Map();
+const userContacts = new Map();
 
 // Security monitoring
 const securityEvents = new Map();
 const screenshotAttempts = new Map();
+
+const HEARTBEAT_INTERVAL = 15000;
+const HEARTBEAT_TIMEOUT = 45000;
+const roomMeta = new Map();
 
 // Security event logging
 function logSecurityEvent(eventType, userId, roomId, details = {}) {
@@ -149,26 +164,27 @@ function trackScreenshotAttempt(userId, roomId, ip) {
   }
 }
 
-// Security monitoring endpoint
+// Security monitoring endpoint (rate limited)
 app.post('/security/event', (req, res) => {
   try {
-    // Check if req.body exists and has the required properties
-    if (!req.body || typeof req.body !== 'object') {
-      console.warn('Invalid request body for security event');
-      return res.status(400).json({ error: 'Invalid request body' });
+    const ip = getClientIp(req);
+    if (!rateLimit(`sec:${ip}`)) {
+      res.status(429).json({ error: 'Rate limit exceeded' });
+      return;
     }
-    
-    const { eventType, userId, roomId, details } = req.body;
-    
-    if (eventType && userId) {
-      logSecurityEvent(eventType, userId, roomId, {
-        ...details,
-        ip: req.ip || req.connection.remoteAddress
-      });
-    } else {
-      console.warn('Missing required fields for security event:', { eventType, userId });
+
+    const payload = req.body;
+    if (!payload || typeof payload !== 'object' || !payload.eventType || !payload.userId) {
+      res.status(400).json({ error: 'Invalid request body' });
+      return;
     }
-    
+
+    const eventType = String(payload.eventType).trim();
+    const userId = String(payload.userId).trim();
+    const roomId = payload.roomId ? String(payload.roomId).trim() : '';
+    const details = typeof payload.details === 'object' ? payload.details : {};
+
+    logSecurityEvent(eventType, userId, roomId, { ...details, ip });
     res.status(200).json({ status: 'logged' });
   } catch (error) {
     console.error('Error processing security event:', error);
@@ -182,10 +198,10 @@ app.get('/security/status', (req, res) => {
   
   if (userId && securityEvents.has(userId)) {
     const events = securityEvents.get(userId);
-    const recentEvents = events.filter(e => Date.now() - e.timestamp < 60000); // Last minute
+    const recentEvents = events.filter(e => Date.now() - e.timestamp < 60000);
     
     res.json({
-      userId: userId,
+      userId: String(userId),
       totalEvents: events.length,
       recentEvents: recentEvents.length,
       hasBreaches: events.some(e => e.type === 'SECURITY_BREACH'),
@@ -211,89 +227,182 @@ function generateUserId() {
   return crypto.randomBytes(8).toString('hex');
 }
 
+// Max message payload size in bytes (approx 512KB)
+const MAX_MESSAGE_PAYLOAD = 512 * 1024;
+const MAX_SOCKET_RATE = 20;
+
 io.on('connection', (socket) => {
   console.log('New connection:', socket.id);
   
   // Generate anonymous user ID
   const userId = generateUserId();
+  const ip = socket.handshake?.address || socket.conn?.remoteAddress || 'unknown';
+  const roomId = null;
   activeSessions.set(socket.id, {
     userId,
-    roomId: null,
-    connectedAt: Date.now()
+    roomId,
+    connectedAt: Date.now(),
+    messageCount: 0,
+    ip
   });
 
   socket.emit('user-assigned', { userId });
 
-  // Join room
-  socket.on('join-room', (data) => {
-    const session = activeSessions.get(socket.id);
-    if (!session) return;
-
-    let roomId = data.roomId;
-    
-    // Create new room if none exists
-    if (!roomId || !chatRooms.has(roomId)) {
-      roomId = generateRoomId();
-      const roomKey = generateRoomKey();
-      chatRooms.set(roomId, {
-        users: new Set(),
-        messages: [],
-        created: Date.now(),
-        encryptionKey: roomKey,
-        creatorId: userId
-      });
+  socket.on('set-codename', (data) => {
+    try {
+      const session = activeSessions.get(socket.id);
+      if (!session) return;
+      const codename = typeof data === 'object' && typeof data.codename === 'string' ? data.codename.trim().slice(0, 32) : '';
+      session.codename = codename || ('User-' + userId.slice(0, 6));
+      if (!userContacts.has(userId)) {
+        userContacts.set(userId, { codename: session.codename, roomId: session.roomId });
+      } else {
+        userContacts.get(userId).codename = session.codename;
+      }
+      socket.emit('user-assigned', { userId, codename: session.codename });
+      socket.to(session.roomId).emit('contacts-update', { userId, codename: session.codename });
+    } catch (error) {
+      console.error('Error setting codename:', error);
     }
+  });
+  socket.on('join-room', (data) => {
+    try {
+      const session = activeSessions.get(socket.id);
+      if (!session) return;
 
-    session.roomId = roomId;
-    socket.join(roomId);
-    
-    const room = chatRooms.get(roomId);
-    room.users.add(userId);
+      if (!data || typeof data.roomId !== 'string') {
+        socket.emit('error', { message: 'Invalid room ID' });
+        return;
+      }
 
-    socket.emit('room-joined', { 
-      roomId,
-      userCount: room.users.size,
-      messages: room.messages.slice(-50), // Last 50 messages
-      roomKey: room.encryptionKey,
-      creatorId: room.creatorId
-    });
+      let roomId = data.roomId.trim();
+      if (roomId.length > 64) {
+        socket.emit('error', { message: 'Room ID too long' });
+        return;
+      }
 
-    socket.to(roomId).emit('user-joined', { 
-      userId,
-      userCount: room.users.size 
-    });
+      // Create new room if none exists
+      // If caller supplied a room ID, reuse it so all parties can meet in the same room.
+      if (!chatRooms.has(roomId)) {
+        const roomKey = generateRoomKey();
+        chatRooms.set(roomId, {
+          users: new Set(),
+          messages: [],
+          created: Date.now(),
+          encryptionKey: roomKey,
+          creatorId: userId
+        });
+      } else {
+        const existing = chatRooms.get(roomId);
+        if (existing.users.size >= 50) {
+          socket.emit('error', { message: 'Room is full' });
+          return;
+        }
+      }
+
+      session.roomId = roomId;
+      socket.join(roomId);
+      
+      const room = chatRooms.get(roomId);
+      room.users.add(userId);
+
+      const joinPayload = { 
+        roomId,
+        userCount: room.users.size,
+        messages: room.messages.slice(-50),
+        roomKey: room.encryptionKey,
+        creatorId: room.creatorId
+      };
+      if (session.codename) joinPayload.codename = session.codename;
+      const creatorSession = [...activeSessions.entries()].find(([, s]) => s.userId === room.creatorId);
+      if (creatorSession && creatorSession[1].codename) {
+        joinPayload.creatorCodename = creatorSession[1].codename;
+      }
+
+      socket.emit('room-joined', joinPayload);
+
+      const meta = roomMeta.get(roomId) || { typing: new Map(), lastRead: new Map(), heartbeats: new Map() };
+      roomMeta.set(roomId, meta);
+      meta.lastRead.set(userId, Date.now());
+
+      const userJoinedPayload = { 
+        userId,
+        userCount: room.users.size 
+      };
+      if (session.codename) userJoinedPayload.codename = session.codename;
+
+      socket.to(roomId).emit('user-joined', userJoinedPayload);
+    } catch (error) {
+      console.error('Error joining room:', error);
+      socket.emit('error', { message: 'Failed to join room' });
+    }
   });
 
   // Handle encrypted messages
   socket.on('send-message', (data) => {
-    const session = activeSessions.get(socket.id);
-    if (!session || !session.roomId) return;
+    try {
+      const session = activeSessions.get(socket.id);
+      if (!session || !session.roomId) {
+        socket.emit('error', { message: 'Not in a room' });
+        return;
+      }
 
-    const room = chatRooms.get(session.roomId);
-    if (!room) return;
+      if (!data || typeof data !== 'object' || typeof data.encryptedContent !== 'string') {
+        socket.emit('error', { message: 'Invalid message payload' });
+        return;
+      }
 
-    const message = {
-      id: crypto.randomBytes(16).toString('hex'),
-      userId: session.userId,
-      encryptedContent: data.encryptedContent,
-      timestamp: data.timestamp || Date.now(),
-      signature: data.signature,
-      digitalSignature: data.digitalSignature,
-      method: data.method,
-      salt: data.salt,
-      sequenceNumber: data.sequenceNumber,
-      sessionId: data.sessionId
-    };
+      // Rate limit per socket
+      session.messageCount = (session.messageCount || 0) + 1;
+      const now = Date.now();
+      if (!session.rateWindow || now - session.rateWindow > 10000) {
+        session.rateWindow = now;
+        session.messageCount = 0;
+      }
+      if (session.messageCount > MAX_SOCKET_RATE) {
+        socket.emit('error', { message: 'Rate limit exceeded' });
+        return;
+      }
 
-    room.messages.push(message);
-    
-    // Keep only last 100 messages
-    if (room.messages.length > 100) {
-      room.messages = room.messages.slice(-100);
+      const payloadSize = Buffer.byteLength(data.encryptedContent || '', 'utf8');
+      if (payloadSize > MAX_MESSAGE_PAYLOAD) {
+        socket.emit('error', { message: 'Message too large' });
+        return;
+      }
+
+      const room = chatRooms.get(session.roomId);
+      if (!room) {
+        socket.emit('error', { message: 'Room not found' });
+        return;
+      }
+
+      const message = {
+        id: crypto.randomBytes(16).toString('hex'),
+        userId: session.userId,
+        encryptedContent: String(data.encryptedContent || '').slice(0, MAX_MESSAGE_PAYLOAD),
+        timestamp: typeof data.timestamp === 'number' ? data.timestamp : Date.now(),
+        signature: data.signature ? String(data.signature).slice(0, 512) : '',
+        digitalSignature: data.digitalSignature ? String(data.digitalSignature).slice(0, 256) : '',
+        method: data.method ? String(data.method).slice(0, 32) : 'unknown',
+        salt: data.salt ? String(data.salt).slice(0, 128) : '',
+        sequenceNumber: typeof data.sequenceNumber === 'number' ? data.sequenceNumber : 0,
+        sessionId: data.sessionId ? String(data.sessionId).slice(0, 128) : '',
+        messageType: (data.messageType === 'attachment' || data.messageType === 'location') ? data.messageType : 'text'
+      };
+
+      room.messages.push(message);
+      
+      // Keep only last 100 messages
+      if (room.messages.length > 100) {
+        room.messages = room.messages.slice(-100);
+      }
+
+      socket.to(session.roomId).emit('new-message', message);
+      socket.emit('message-sent', { messageId: message.id, timestamp: message.timestamp });
+    } catch (error) {
+      console.error('Error handling message:', error);
+      socket.emit('error', { message: 'Failed to send message' });
     }
-
-    // Broadcast to room
-    socket.to(session.roomId).emit('new-message', message);
   });
 
   // Handle key rotation events
@@ -301,14 +410,16 @@ io.on('connection', (socket) => {
     const session = activeSessions.get(socket.id);
     if (!session || !session.roomId) return;
 
+    if (!data || typeof data !== 'object') return;
+
     // Log key rotation for security monitoring
     console.log(`Key rotation in room ${session.roomId} by user ${session.userId}`);
     
     // Notify other users in the room about key rotation
     socket.to(session.roomId).emit('key-rotated', {
       userId: session.userId,
-      sessionId: data.sessionId,
-      timestamp: data.timestamp
+      sessionId: String(data.sessionId || '').slice(0, 128),
+      timestamp: typeof data.timestamp === 'number' ? data.timestamp : Date.now()
     });
   });
 
@@ -317,14 +428,19 @@ io.on('connection', (socket) => {
     const session = activeSessions.get(socket.id);
     if (!session || !session.roomId) return;
 
+    if (!data || typeof data !== 'object' || !data.messageId || !data.type) {
+      socket.emit('error', { message: 'Invalid feedback payload' });
+      return;
+    }
+
     const room = chatRooms.get(session.roomId);
     if (!room) return;
 
     const feedback = {
       id: crypto.randomBytes(16).toString('hex'),
-      messageId: data.messageId,
+      messageId: String(data.messageId).slice(0, 128),
       userId: session.userId,
-      type: data.type,
+      type: String(data.type).slice(0, 32),
       timestamp: Date.now()
     };
 
@@ -332,25 +448,85 @@ io.on('connection', (socket) => {
     socket.to(session.roomId).emit('new-feedback', feedback);
   });
 
-  // Handle end-room event
-  socket.on('end-room', (data) => {
+  socket.on('typing-start', (data) => {
     const session = activeSessions.get(socket.id);
-    if (!session || !session.roomId) return;
-    const roomId = session.roomId;
+    if (!session || !session.roomId || !data || !data.userId) return;
+    socket.to(session.roomId).emit('typing-start', { userId: session.userId });
+  });
+
+  socket.on('typing-stop', (data) => {
+    const session = activeSessions.get(socket.id);
+    if (!session || !session.roomId || !data || !data.userId) return;
+    socket.to(session.roomId).emit('typing-stop', { userId: session.userId });
+  });
+
+  socket.on('read-receipt', (data) => {
+    const session = activeSessions.get(socket.id);
+    if (!session || !session.roomId || !data || !data.messageId) return;
+    socket.to(session.roomId).emit('read-receipt', {
+      messageId: String(data.messageId),
+      userId: session.userId,
+      timestamp: Date.now()
+    });
+  });
+
+  socket.on('heartbeat', () => {
+    const session = activeSessions.get(socket.id);
+    if (!session) return;
+    session.lastHeartbeat = Date.now();
+    session.userId = session.userId;
+    
+    if (session.roomId) {
+      const meta = roomMeta.get(session.roomId);
+      if (meta) {
+        meta.heartbeats.set(session.userId, Date.now());
+      }
+    }
+  });
+
+  socket.on('reconnect-request', (data) => {
+    const session = activeSessions.get(socket.id);
+    if (!session || !data || !data.roomId) return;
+    const roomId = String(data.roomId).trim();
     const room = chatRooms.get(roomId);
     if (!room) return;
-    // Notify all users in the room
-    io.to(roomId).emit('room-ended', { roomId });
-    // Remove all users from the room
-    room.users.forEach(uid => {
-      for (const [sid, sess] of activeSessions.entries()) {
-        if (sess.userId === uid) {
-          activeSessions.get(sid).roomId = null;
-        }
-      }
+
+    session.roomId = roomId;
+    socket.join(roomId);
+    room.users.add(session.userId);
+    
+    socket.emit('room-joined', {
+      roomId,
+      userCount: room.users.size,
+      messages: room.messages.slice(-50),
+      roomKey: room.encryptionKey,
+      creatorId: room.creatorId
     });
-    // Delete the room
-    chatRooms.delete(roomId);
+  });
+
+  // Handle end-room event
+  socket.on('end-room', (data) => {
+    try {
+      const session = activeSessions.get(socket.id);
+      if (!session || !session.roomId) return;
+      const roomId = session.roomId;
+      const room = chatRooms.get(roomId);
+      if (!room) return;
+      // Notify all users in the room
+      io.to(roomId).emit('room-ended', { roomId });
+      // Remove all users from the room
+      room.users.forEach(uid => {
+        for (const [sid, sess] of activeSessions.entries()) {
+          if (sess.userId === uid) {
+            activeSessions.get(sid).roomId = null;
+          }
+        }
+      });
+      // Delete the room
+      chatRooms.delete(roomId);
+    } catch (error) {
+      console.error('Error ending room:', error);
+    }
   });
 
   // Handle disconnection
@@ -364,6 +540,7 @@ io.on('connection', (socket) => {
         // Remove room if empty
         if (room.users.size === 0) {
           chatRooms.delete(session.roomId);
+          roomMeta.delete(session.roomId);
         } else {
           socket.to(session.roomId).emit('user-left', { 
             userId: session.userId,
@@ -393,6 +570,35 @@ setInterval(() => {
   for (const [roomId, room] of chatRooms.entries()) {
     if (now - room.created > 7 * 24 * 60 * 60 * 1000) {
       chatRooms.delete(roomId);
+      roomMeta.delete(roomId);
+    }
+  }
+
+  // Clean up stale heartbeats
+  for (const [roomId, meta] of roomMeta.entries()) {
+    for (const [userId, ts] of meta.heartbeats.entries()) {
+      if (now - ts > HEARTBEAT_TIMEOUT) {
+        meta.heartbeats.delete(userId);
+        const room = chatRooms.get(roomId);
+        if (room) {
+          room.users.delete(userId);
+          io.to(roomId).emit('user-left', {
+            userId,
+            userCount: room.users.size
+          });
+          if (room.users.size === 0) {
+            chatRooms.delete(roomId);
+            roomMeta.delete(roomId);
+          }
+        }
+      }
+    }
+  }
+  
+  // Clean up stale rate-limit entries
+  for (const [key, record] of rateLimitStore.entries()) {
+    if (now > record.resetAt) {
+      rateLimitStore.delete(key);
     }
   }
 }, 60 * 60 * 1000); // Run every hour
@@ -402,6 +608,5 @@ const HOST = '0.0.0.0'; // Listen on all network interfaces
 server.listen(PORT, HOST, () => {
   console.log(`Back Channel server running on http://${HOST}:${PORT}`);
   console.log(`Local access: http://localhost:${PORT}`);
-  console.log(`Network access: http://10.45.2.145:${PORT}`);
   console.log('Server configured for maximum privacy and security');
 }); 

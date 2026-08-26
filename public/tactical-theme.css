@@ -1,0 +1,24 @@
+/* ============================================
+   TACTICAL MILITARY THEME
+   Dark theme with teal/green accents
+   ============================================ */
+
+/* Override base colors */
+:root {
+    --bg-primary: #0a1a1a;
+    --bg-secondary: #0d2020;
+    --bg-tertiary: #112828;
+    --accent-primary: #00d9b3;
+    --accent-secondary: #00ffcc;
+    --text-primary: #e0f0f0;
+    --text-secondary: #8fa8a8;
+    --text-muted: #5a7070;
+    --border-color: #1a3535;
+    --online-color: #00ff88;
+    --offline-color: #ff4444;
+    --warning-color: #ffaa00;
+}
+
+body {
+    background-color: var(--bg-primary);
+    color: var(--text-p

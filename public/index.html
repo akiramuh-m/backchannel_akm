@@ -2,922 +2,381 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <!-- System Name -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>BackChannel</title>
-
     <meta name="description" content="BackChannel - Secure anonymous communication platform">
     <meta name="robots" content="noindex, nofollow">
     <link rel="stylesheet" href="style.css">
     <script src="/socket.io/socket.io.js"></script>
-    <!-- Primary CryptoJS CDN -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
-    <!-- Anti-Screenshot Protection -->
+    <script src="crypto-js.min.js"></script>
     <style>
-        /* Prevent screenshots and screen recording */
-        body {
-            -webkit-user-select: none;
-            -moz-user-select: none;
-            -ms-user-select: none;
-            user-select: none;
-            -webkit-touch-callout: none;
-            -webkit-tap-highlight-color: transparent;
-        }
-        
-        /* Disable text selection */
-        * {
-            -webkit-user-select: none !important;
-            -moz-user-select: none !important;
-            -ms-user-select: none !important;
-            user-select: none !important;
-        }
-        
-        /* HARDWARE-LEVEL ANTI-SCREENSHOT PROTECTION */
-        
-        /* 1. Dynamic interference patterns that change constantly */
-        .hardware-protection {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
+        * { box-sizing: border-box; }
+        html, body {
             height: 100%;
-            pointer-events: none;
-            z-index: 9998;
-            background: 
-                repeating-linear-gradient(
-                    45deg,
-                    transparent,
-                    transparent 2px,
-                    rgba(255,255,255,0.02) 2px,
-                    rgba(255,255,255,0.02) 4px
-                ),
-                repeating-linear-gradient(
-                    -45deg,
-                    transparent,
-                    transparent 2px,
-                    rgba(255,255,255,0.015) 2px,
-                    rgba(255,255,255,0.015) 4px
-                );
-            animation: interferencePattern 0.1s infinite;
+            margin: 0;
+            background: #0a0a0a;
+            color: #e5e5e5;
+            font-family: Segoe UI, Roboto, Helvetica, Arial, sans-serif;
         }
-        
-        @keyframes interferencePattern {
-            0% { transform: translateX(0px) translateY(0px); }
-            25% { transform: translateX(1px) translateY(1px); }
-            50% { transform: translateX(-1px) translateY(0px); }
-            75% { transform: translateX(0px) translateY(-1px); }
-            100% { transform: translateX(0px) translateY(0px); }
+        #app {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
         }
-        
-        /* 2. High-frequency flicker that confuses cameras */
-        .camera-confusion {
-            position: fixed;
-            top: 0;
-            left: 0;
+        #main-container {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+        #contacts-sidebar {
+            width: 340px;
+            min-width: 260px;
+            border-right: 1px solid #262626;
+            background: #0f0f0f;
+            display: flex;
+            flex-direction: column;
+        }
+        .sidebar-header {
+            padding: 16px;
+            border-bottom: 1px solid #262626;
+            background: #111111;
+        }
+        .sidebar-header h3 {
+            margin: 0 0 10px 0;
+            font-size: 18px;
+            color: #f5f5f5;
+        }
+        .sidebar-search input {
             width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 9997;
-            background: 
-                radial-gradient(circle at 20% 20%, rgba(255,0,0,0.01) 1px, transparent 1px),
-                radial-gradient(circle at 80% 80%, rgba(0,255,0,0.01) 1px, transparent 1px),
-                radial-gradient(circle at 40% 60%, rgba(0,0,255,0.01) 1px, transparent 1px);
-            background-size: 50px 50px, 30px 30px, 70px 70px;
-            animation: cameraFlicker 0.05s infinite;
+            padding: 8px;
+            border-radius: 8px;
+            border: 1px solid #333;
+            background: #1a1a1a;
+            color: #e5e5e5;
         }
-        
-        @keyframes cameraFlicker {
-            0%, 100% { opacity: 0.01; }
-            50% { opacity: 0.03; }
+        #contacts-list {
+            flex: 1;
+            overflow-y: auto;
         }
-        
-        /* 3. Content that becomes unreadable when captured */
-        .screenshot-protection {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 9996;
-            background: 
-                repeating-conic-gradient(
-                    from 0deg,
-                    transparent 0deg,
-                    rgba(255,255,255,0.005) 1deg,
-                    transparent 2deg
-                );
-            animation: contentProtection 0.2s infinite;
+        .contact-item {
+            padding: 14px 16px;
+            border-bottom: 1px solid #1a1a1a;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
         }
-        
-        @keyframes contentProtection {
-            0% { transform: rotate(0deg) scale(1); }
-            50% { transform: rotate(0.5deg) scale(1.001); }
-            100% { transform: rotate(0deg) scale(1); }
+        .contact-item:hover { background: #151515; }
+        .contact-item.active { background: #1f1f1f; border-left: 3px solid #00a884; }
+        .contact-name {
+            font-size: 15px;
+            color: #f5f5f5;
+            font-weight: 500;
         }
-        
-        /* 4. Invisible markers that become visible in screenshots */
-        .screenshot-markers {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 9995;
+        .contact-meta {
+            font-size: 12px;
+            color: #888;
         }
-        
-        .screenshot-markers::before {
-            content: 'SCREENSHOT_DETECTED_' attr(data-timestamp);
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            color: rgba(255,255,255,0.001);
-            font-size: 1px;
-            font-family: monospace;
+        #chat-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #0a0a0a;
+            min-width: 0;
         }
-        
-        /* 5. Dynamic watermark that changes constantly */
-        .dynamic-watermark {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 9994;
-            background: 
-                repeating-linear-gradient(
-                    90deg,
-                    transparent,
-                    transparent 100px,
-                    rgba(255,255,255,0.001) 100px,
-                    rgba(255,255,255,0.001) 101px
-                );
-            animation: watermarkShift 0.3s infinite;
+        #chat-header {
+            padding: 12px 18px;
+            border-bottom: 1px solid #262626;
+            background: #111111;
+            display: flex;
+            align-items: center;
+            gap: 12px;
         }
-        
-        @keyframes watermarkShift {
-            0% { transform: translate(-50%, -50%) translateX(0px); }
-            50% { transform: translate(-50%, -50%) translateX(1px); }
-            100% { transform: translate(-50%, -50%) translateX(0px); }
+        #chat-header .avatar {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            background: #00a884;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
         }
-        
-        /* 6. Anti-photography overlay with enhanced protection */
-        .anti-photo-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 9999;
-            opacity: 0;
-            transition: opacity 0.3s ease;
-            background: 
-                radial-gradient(circle at 20% 20%, rgba(255,0,0,0.2) 2px, transparent 2px),
-                radial-gradient(circle at 80% 80%, rgba(0,255,0,0.2) 2px, transparent 2px),
-                radial-gradient(circle at 40% 60%, rgba(0,0,255,0.2) 2px, transparent 2px),
-                repeating-linear-gradient(
-                    45deg,
-                    transparent,
-                    transparent 10px,
-                    rgba(255,255,255,0.1) 10px,
-                    rgba(255,255,255,0.1) 11px
-                );
-            background-size: 100px 100px, 80px 80px, 120px 120px, 20px 20px;
+        #chat-header .header-info { flex: 1; }
+        #chat-header .header-title { font-weight: 600; color: #f5f5f5; }
+        #chat-header .header-sub { font-size: 12px; color: #888; }
+        #chat-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
         }
-        
-        .anti-photo-overlay.active {
-            opacity: 1;
-            animation: securityAlert 2s ease-in-out;
+        .message {
+            max-width: 72%;
+            padding: 10px 12px;
+            border-radius: 12px;
+            background: #1a1a1a;
+            border: 1px solid #262626;
+            word-wrap: break-word;
         }
-        
-        /* Invisible watermark pattern */
-        .watermark-pattern {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-image: 
-                radial-gradient(circle at 20% 20%, rgba(255,255,255,0.01) 1px, transparent 1px),
-                radial-gradient(circle at 80% 80%, rgba(255,255,255,0.01) 1px, transparent 1px),
-                radial-gradient(circle at 40% 60%, rgba(255,255,255,0.01) 1px, transparent 1px),
-                radial-gradient(circle at 60% 40%, rgba(255,255,255,0.01) 1px, transparent 1px);
-            background-size: 50px 50px, 30px 30px, 70px 70px, 40px 40px;
-            pointer-events: none;
-            z-index: 1;
+        .message.own {
+            align-self: flex-end;
+            background: #054640;
+            border-color: #073b34;
         }
-        
-        /* Screen recording detection */
-        .recording-warning {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: #ff0000;
-            color: white;
+        .message.other {
+            align-self: flex-start;
+            background: #1a1a1a;
+            border-color: #262626;
+        }
+        .message.system-message {
+            align-self: center;
+            background: transparent;
+            border: none;
+            color: #888;
+            font-size: 12px;
+        }
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            font-size: 11px;
+            color: #888;
+            margin-bottom: 4px;
+        }
+        .message-content {
+            font-size: 14px;
+            color: #e5e5e5;
+            white-space: pre-wrap;
+        }
+        #input-area {
+            padding: 10px 12px;
+            border-top: 1px solid #262626;
+            background: #111111;
+        }
+        #room-controls {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        #room-controls input {
+            flex: 1;
             padding: 10px;
-            border-radius: 5px;
-            font-family: 'Courier New', monospace;
-            z-index: 10000;
-            display: none;
+            border-radius: 8px;
+            border: 1px solid #333;
+            background: #1a1a1a;
+            color: #e5e5e5;
         }
-        
-        /* Camera detection warning */
-        .camera-warning {
-            position: fixed;
-            top: 20px;
-            left: 20px;
-            background: #ff0000;
-            color: white;
+        #message-input-container {
+            display: flex;
+            gap: 8px;
+            align-items: flex-end;
+        }
+        #message-input {
+            flex: 1;
             padding: 10px;
-            border-radius: 5px;
-            font-family: 'Courier New', monospace;
-            z-index: 10000;
-            display: none;
+            border-radius: 8px;
+            border: 1px solid #333;
+            background: #1a1a1a;
+            color: #e5e5e5;
+            min-height: 40px;
+            max-height: 120px;
+            resize: none;
         }
-        
-        /* 7. Content scrambling for screenshots */
-        .content-scrambler {
+        .empty-state {
+            margin: auto;
+            color: #888;
+            text-align: center;
+        }
+        .typing-indicator {
+            padding: 6px 16px;
+            font-size: 12px;
+            color: #888;
+            min-height: 24px;
+            background: transparent;
+            border-top: 1px solid #1f1f1f;
+        }
+        #codename-screen {
             position: fixed;
-            top: 0;
-            left: 0;
+            inset: 0;
+            background: #0a0a0a;
+            z-index: 1500;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .codename-card {
+            width: 340px;
+            max-width: 92vw;
+            padding: 24px;
+            border-radius: 16px;
+            background: #111111;
+            border: 1px solid #262626;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+        }
+        .codename-card h2 {
+            margin: 0 0 8px;
+            color: #f5f5f5;
+        }
+        .codename-card p {
+            margin: 0 0 16px;
+            color: #888;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        .codename-card input {
             width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 9993;
-            background: 
-                repeating-linear-gradient(
-                    0deg,
-                    transparent,
-                    transparent 1px,
-                    rgba(255,255,255,0.002) 1px,
-                    rgba(255,255,255,0.002) 2px
-                );
-            animation: contentScramble 0.1s infinite;
+            padding: 12px;
+            border-radius: 10px;
+            border: 1px solid #333;
+            background: #1a1a1a;
+            color: #e5e5e5;
+            margin-bottom: 10px;
         }
-        
-        @keyframes contentScramble {
-            0% { transform: translateX(0px) translateY(0px); }
-            25% { transform: translateX(0.5px) translateY(0px); }
-            50% { transform: translateX(0px) translateY(0.5px); }
-            75% { transform: translateX(-0.5px) translateY(0px); }
-            100% { transform: translateX(0px) translateY(0px); }
+        .codename-card button {
+            width: 100%;
+            padding: 12px;
+            border-radius: 10px;
+            border: none;
+            background: #00a884;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
         }
-        
-        /* 8. Hardware acceleration for better performance */
-        .hardware-accelerated {
-            transform: translateZ(0);
-            backface-visibility: hidden;
-            perspective: 1000px;
-        }
+        .hidden { display: none !important; }
     </style>
 </head>
 <body>
-    <!-- HARDWARE-LEVEL ANTI-SCREENSHOT PROTECTION LAYERS -->
-    
-    <!-- Layer 1: Content scrambler -->
-    <div class="content-scrambler hardware-accelerated"></div>
-    
-    <!-- Layer 2: Dynamic watermark -->
-    <div class="dynamic-watermark hardware-accelerated"></div>
-    
-    <!-- Layer 3: Screenshot markers -->
-    <div class="screenshot-markers hardware-accelerated" data-timestamp=""></div>
-    
-    <!-- Layer 4: Screenshot protection -->
-    <div class="screenshot-protection hardware-accelerated"></div>
-    
-    <!-- Layer 5: Camera confusion -->
-    <div class="camera-confusion hardware-accelerated"></div>
-    
-    <!-- Layer 6: Hardware protection -->
-    <div class="hardware-protection hardware-accelerated"></div>
-    
-    <!-- Anti-photography overlay -->
-    <div class="anti-photo-overlay" id="antiPhotoOverlay">
-        <div class="watermark-pattern"></div>
-    </div>
-    
-    <!-- Recording detection warning -->
-    <div class="recording-warning" id="recordingWarning">
-        ⚠️ SCREEN RECORDING DETECTED - SECURITY BREACH
-    </div>
-    
-    <!-- Camera detection warning -->
-    <div class="camera-warning" id="cameraWarning">
-        📷 CAMERA ACCESS DETECTED - SECURITY BREACH
+    <div id="codename-screen">
+        <div class="codename-card">
+            <h2>Choose your codename</h2>
+            <p>No passwords, no accounts, no stored credentials. Your identity here is your codename. We do not keep user data beyond this session.</p>
+            <input type="text" id="codename-input" placeholder="Enter codename" maxlength="32" autocomplete="off">
+            <button id="set-codename-btn">Enter BackChannel</button>
+        </div>
     </div>
 
     <div id="app">
-        <!-- Connection Status -->
         <div id="status-bar">
-            <span id="connection-status">Connecting...</span>
-            <span id="user-id"></span>
-            <span id="room-info"></span>
-            <button id="copy-room-btn" style="display:none; margin-left: 8px;">Copy</button>
-        </div>
-
-        <!-- Main Chat Interface -->
-        <div id="chat-container">
-            <div id="messages"></div>
-            
-            <!-- Input Area -->
-            <div id="input-area">
-                <div id="room-controls">
-                    <input type="text" id="room-input" placeholder="Enter room ID to join" maxlength="32">
-                    <button id="join-room-btn">Join Room</button>
-                    <button id="new-room-btn">New Room</button>
-                    <button id="end-room-btn" style="display:none; margin-left: 8px;">End Room</button>
-                </div>
-                
-                <div id="message-input-container">
-                    <textarea id="message-input" placeholder="Type your message (will be encrypted)..." maxlength="1000"></textarea>
-                    <button id="send-btn">Send</button>
-                </div>
+            <div id="logo">
+                <span class="logo-icon">◈</span>
+                <span class="logo-text">BackChannel</span>
+            </div>
+            <div id="user-id" class="status-element">ID: Not assigned</div>
+            <div id="room-info" class="status-element">Not in room</div>
+            <div id="connection-security">
+                <span id="connection-status" class="security-detail">Disconnected</span>
+                <span id="connection-type" class="security-detail">Offline</span>
+                <span id="encryption-status" class="security-detail">Initializing...</span>
             </div>
         </div>
 
-        <!-- Security Info -->
-        <div id="security-info">
-            <div class="security-item">
-                <span class="security-label">Encryption:</span>
-                <span class="security-value" id="encryption-status">AES-256</span>
+        <div id="main-container">
+            <div id="contacts-sidebar">
+                <div class="sidebar-header">
+                    <h3>Contacts <span class="contact-count">[<span id="contact-count">0</span>]</span></h3>
+                    <button id="menu-btn" class="menu-button" title="Menu">☰</button>
+                </div>
+                <div class="sidebar-search">
+                    <input type="text" id="contact-search" placeholder="Search contacts...">
+                </div>
+                <div id="contacts-list"></div>
             </div>
-            <div class="security-item">
-                <span class="security-label">Connection:</span>
-                <span class="security-value" id="connection-type">Establishing...</span>
-            </div>
-            <div class="security-item">
-                <span class="security-label">Auto-Clear:</span>
-                <span class="security-value">20 seconds</span>
-            </div>
-            <div class="security-item">
-                <span class="security-label">Anti-Screenshot:</span>
-                <span class="security-value" id="anti-screenshot-status">Active</span>
+
+            <div id="chat-area">
+                <div id="chat-header">
+                    <button id="back-to-contacts-btn" class="back-button" style="display:none;" title="Back to contacts">← Back</button>
+                    <div class="avatar" id="chat-header-avatar">?</div>
+                    <div class="header-info">
+                        <div id="room-title" class="header-title">Select a contact</div>
+                        <div id="room-subtitle" class="header-sub"></div>
+                    </div>
+                    <div id="encryption-indicator">
+                        <span class="encryption-badge-small">🔐 Encryption and Disappearing messages Enabled (24h)</span>
+                    </div>
+                </div>
+
+                <div id="chat-container">
+                    <div id="messages"></div>
+                    <div id="typing-indicator" class="typing-indicator" aria-live="polite"></div>
+                </div>
+
+                <div id="input-area">
+                    <div id="room-controls">
+                        <input type="text" id="room-input" placeholder="Enter contact ID or room code" maxlength="32">
+                        <button id="join-room-btn">Connect</button>
+                        <button id="new-room-btn">New Room</button>
+                        <button id="copy-room-btn" style="display:none;">📋 Copy</button>
+                        <button id="share-room-btn" style="display:none;">🔗 Share</button>
+                        <button id="end-room-btn" style="display:none;">End Session</button>
+                    </div>
+
+                    <div id="message-input-container">
+                        <div id="attachment-controls">
+                            <button id="attach-file-btn" title="Attach File">📎</button>
+                            <button id="take-photo-btn" title="Take Photo / Select Image">📷</button>
+                            <button id="share-location-btn" title="Share Location">📍</button>
+                            <input type="file" id="file-input" style="display:none;" accept="*/*">
+                            <input type="file" id="photo-input" style="display:none;" accept="image/*" capture="environment">
+                            <input type="file" id="gallery-input" style="display:none;" accept="image/*">
+                        </div>
+                        <div id="photo-menu" class="photo-menu" style="display:none;">
+                            <button id="take-new-photo-btn">📸 Take Photo</button>
+                            <button id="choose-from-gallery-btn">🖼️ Choose from Gallery</button>
+                            <button id="cancel-photo-btn">✕ Cancel</button>
+                        </div>
+                        <div id="attachment-preview" style="display:none;"></div>
+                        <textarea id="message-input" placeholder="Type encrypted message..." maxlength="1000"></textarea>
+                        <button id="send-btn">Send</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
-    <script src="crypto-js.min.js"></script>
+    <div id="hamburger-menu" class="hamburger-menu" style="display:none;">
+        <div class="menu-header">
+            <h3>Menu</h3>
+            <button id="close-menu-btn" class="close-menu-btn">✕</button>
+        </div>
+        <div class="menu-content">
+            <div class="menu-section">
+                <h4>👤 Identity</h4>
+                <div class="menu-item">
+                    <span class="menu-label">Codename:</span>
+                    <span id="menu-codename" class="menu-value">Not set</span>
+                </div>
+                <div class="menu-item">
+                    <span class="menu-label">Connection:</span>
+                    <span id="menu-connection-status" class="menu-value">Disconnected</span>
+                </div>
+                <div class="menu-item">
+                    <span class="menu-label">Room:</span>
+                    <span id="menu-room-info" class="menu-value">Not in room</span>
+                </div>
+            </div>
+            <div class="menu-section">
+                <h4>📷 Camera & Media</h4>
+                <button id="menu-take-photo" class="menu-action-btn">📸 Take Photo</button>
+                <button id="menu-choose-photo" class="menu-action-btn">🖼️ Choose from Gallery</button>
+                <button id="menu-attach-file" class="menu-action-btn">📎 Attach File</button>
+                <button id="menu-share-location" class="menu-action-btn">📍 Share Location</button>
+            </div>
+            <div class="menu-section">
+                <h4>🏠 Room Actions</h4>
+                <button id="menu-new-room" class="menu-action-btn">➕ Create New Room</button>
+                <button id="menu-copy-room" class="menu-action-btn" style="display:none;">📋 Copy Room Code</button>
+                <button id="menu-end-room" class="menu-action-btn" style="display:none;">🚪 End Room</button>
+            </div>
+        </div>
+    </div>
+
     <script src="app.js"></script>
-    
-    <!-- Anti-Screenshot and Anti-Photography Script -->
-    <script>
-        // Anti-Screenshot and Anti-Photography Protection
-        class AntiScreenshotProtection {
-            constructor() {
-                this.isActive = true;
-                this.overlay = document.getElementById('antiPhotoOverlay');
-                this.recordingWarning = document.getElementById('recordingWarning');
-                this.cameraWarning = document.getElementById('cameraWarning');
-                this.lastActivity = Date.now();
-                this.screenshotAttempts = 0;
-                this.cameraDetectionActive = false;
-                
-                this.initializeProtection();
-            }
-            
-            initializeProtection() {
-                this.preventScreenshots();
-                this.preventRightClick();
-                this.preventKeyboardShortcuts();
-                this.detectScreenRecording();
-                this.detectCameraAccess();
-                this.addVisualNoise();
-                this.monitorActivity();
-                this.preventDevTools();
-                this.addInvisibleWatermarks();
-            }
-            
-            // Prevent screenshots using multiple methods
-            preventScreenshots() {
-                // Method 1: CSS protection
-                document.addEventListener('keydown', (e) => {
-                    // Prevent Print Screen
-                    if (e.key === 'PrintScreen' || e.keyCode === 44) {
-                        e.preventDefault();
-                        this.triggerScreenshotAlert();
-                        return false;
-                    }
-                    
-                    // Prevent Ctrl+Shift+I (DevTools)
-                    if (e.ctrlKey && e.shiftKey && e.key === 'I') {
-                        e.preventDefault();
-                        this.triggerDevToolsAlert();
-                        return false;
-                    }
-                    
-                    // Prevent Ctrl+Shift+C (DevTools)
-                    if (e.ctrlKey && e.shiftKey && e.key === 'C') {
-                        e.preventDefault();
-                        this.triggerDevToolsAlert();
-                        return false;
-                    }
-                    
-                    // Prevent Ctrl+U (View Source)
-                    if (e.ctrlKey && e.key === 'u') {
-                        e.preventDefault();
-                        this.triggerDevToolsAlert();
-                        return false;
-                    }
-                    
-                    // Prevent F12
-                    if (e.key === 'F12') {
-                        e.preventDefault();
-                        this.triggerDevToolsAlert();
-                        return false;
-                    }
-                });
-                
-                // Method 2: Visibility API detection
-                document.addEventListener('visibilitychange', () => {
-                    if (document.hidden) {
-                        this.triggerVisibilityAlert();
-                    }
-                });
-                
-                // Method 3: Window focus detection
-                window.addEventListener('blur', () => {
-                    this.triggerFocusAlert();
-                });
-            }
-            
-            // Prevent right-click context menu
-            preventRightClick() {
-                document.addEventListener('contextmenu', (e) => {
-                    e.preventDefault();
-                    this.triggerRightClickAlert();
-                    return false;
-                });
-                
-                // Prevent long press on mobile
-                document.addEventListener('touchstart', (e) => {
-                    this.touchStartTime = Date.now();
-                });
-                
-                document.addEventListener('touchend', (e) => {
-                    const touchDuration = Date.now() - this.touchStartTime;
-                    if (touchDuration > 500) { // Long press detected
-                        e.preventDefault();
-                        this.triggerLongPressAlert();
-                        return false;
-                    }
-                });
-            }
-            
-            // Prevent keyboard shortcuts
-            preventKeyboardShortcuts() {
-                document.addEventListener('keydown', (e) => {
-                    // Prevent Ctrl+S (Save)
-                    if (e.ctrlKey && e.key === 's') {
-                        e.preventDefault();
-                        this.triggerSaveAlert();
-                        return false;
-                    }
-                    
-                    // Prevent Ctrl+P (Print)
-                    if (e.ctrlKey && e.key === 'p') {
-                        e.preventDefault();
-                        this.triggerPrintAlert();
-                        return false;
-                    }
-                    
-                    // Prevent Ctrl+A (Select All)
-                    if (e.ctrlKey && e.key === 'a') {
-                        e.preventDefault();
-                        this.triggerSelectAllAlert();
-                        return false;
-                    }
-                });
-            }
-            
-            // Detect screen recording
-            detectScreenRecording() {
-                // Method 1: Canvas fingerprinting detection
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
-                ctx.textBaseline = 'top';
-                ctx.font = '14px Arial';
-                ctx.fillText('Screen recording detection', 2, 2);
-                
-                const originalGetImageData = ctx.getImageData;
-                ctx.getImageData = function() {
-                    this.recordingDetected = true;
-                    return originalGetImageData.apply(this, arguments);
-                };
-                
-                // Method 2: Performance timing detection
-                const originalGetEntries = performance.getEntries;
-                performance.getEntries = function() {
-                    const entries = originalGetEntries.apply(this, arguments);
-                    if (entries.length > 1000) { // Suspicious activity
-                        this.recordingDetected = true;
-                    }
-                    return entries;
-                };
-                
-                // Check for recording periodically
-                setInterval(() => {
-                    if (ctx.recordingDetected || performance.recordingDetected) {
-                        this.showRecordingWarning();
-                    }
-                }, 1000);
-            }
-            
-            // Detect camera access
-            async detectCameraAccess() {
-                try {
-                    // Check if camera is being accessed
-                    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                    this.showCameraWarning();
-                    stream.getTracks().forEach(track => track.stop());
-                } catch (error) {
-                    // Camera access denied or not available
-                }
-                
-                // Monitor for camera access attempts
-                const originalGetUserMedia = navigator.mediaDevices.getUserMedia;
-                navigator.mediaDevices.getUserMedia = function(constraints) {
-                    if (constraints.video) {
-                        this.cameraAccessAttempted = true;
-                        setTimeout(() => {
-                            this.showCameraWarning();
-                        }, 100);
-                    }
-                    return originalGetUserMedia.apply(this, arguments);
-                };
-            }
-            
-            // Add visual noise to prevent photography
-            addVisualNoise() {
-                // Create subtle visual noise
-                const noiseCanvas = document.createElement('canvas');
-                noiseCanvas.style.position = 'fixed';
-                noiseCanvas.style.top = '0';
-                noiseCanvas.style.left = '0';
-                noiseCanvas.style.width = '100%';
-                noiseCanvas.style.height = '100%';
-                noiseCanvas.style.pointerEvents = 'none';
-                noiseCanvas.style.zIndex = '9998';
-                noiseCanvas.style.opacity = '0.01';
-                
-                const ctx = noiseCanvas.getContext('2d');
-                const imageData = ctx.createImageData(100, 100);
-                
-                for (let i = 0; i < imageData.data.length; i += 4) {
-                    const noise = Math.random() * 255;
-                    imageData.data[i] = noise;
-                    imageData.data[i + 1] = noise;
-                    imageData.data[i + 2] = noise;
-                    imageData.data[i + 3] = 255;
-                }
-                
-                ctx.putImageData(imageData, 0, 0);
-                document.body.appendChild(noiseCanvas);
-            }
-            
-            // Monitor user activity
-            monitorActivity() {
-                document.addEventListener('mousemove', () => {
-                    this.lastActivity = Date.now();
-                });
-                
-                document.addEventListener('keydown', () => {
-                    this.lastActivity = Date.now();
-                });
-                
-                // Check for suspicious inactivity
-                setInterval(() => {
-                    const inactiveTime = Date.now() - this.lastActivity;
-                    if (inactiveTime > 30000) { // 30 seconds
-                        this.triggerInactivityAlert();
-                    }
-                }, 5000);
-            }
-            
-            // Prevent DevTools
-            preventDevTools() {
-                // Method 1: Console detection
-                const devtools = {
-                    open: false,
-                    orientation: null
-                };
-                
-                setInterval(() => {
-                    const threshold = 160;
-                    const widthThreshold = window.outerWidth - window.innerWidth > threshold;
-                    const heightThreshold = window.outerHeight - window.innerHeight > threshold;
-                    
-                    if (widthThreshold || heightThreshold) {
-                        if (!devtools.open) {
-                            devtools.open = true;
-                            this.triggerDevToolsAlert();
-                        }
-                    } else {
-                        devtools.open = false;
-                    }
-                }, 500);
-                
-                // Method 2: Debugger detection
-                setInterval(() => {
-                    debugger;
-                }, 100);
-            }
-            
-            // Add invisible watermarks
-            addInvisibleWatermarks() {
-                const watermark = document.createElement('div');
-                watermark.style.position = 'fixed';
-                watermark.style.top = '10px';
-                watermark.style.left = '10px';
-                watermark.style.color = 'rgba(255,255,255,0.01)';
-                watermark.style.fontSize = '1px';
-                watermark.style.zIndex = '9999';
-                watermark.style.pointerEvents = 'none';
-                watermark.textContent = 'BackChannel_SECURE_' + Date.now();
-                document.body.appendChild(watermark);
-            }
-            
-            // Alert methods
-            triggerScreenshotAlert() {
-                this.screenshotAttempts++;
-                this.overlay.classList.add('active');
-                setTimeout(() => {
-                    this.overlay.classList.remove('active');
-                }, 2000);
-                
-                if (this.screenshotAttempts > 3) {
-                    this.lockApplication();
-                }
-            }
-            
-            triggerDevToolsAlert() {
-                this.overlay.classList.add('active');
-                setTimeout(() => {
-                    this.overlay.classList.remove('active');
-                }, 3000);
-            }
-            
-            triggerVisibilityAlert() {
-                this.overlay.classList.add('active');
-                setTimeout(() => {
-                    this.overlay.classList.remove('active');
-                }, 2000);
-            }
-            
-            triggerFocusAlert() {
-                this.overlay.classList.add('active');
-                setTimeout(() => {
-                    this.overlay.classList.remove('active');
-                }, 1500);
-            }
-            
-            triggerRightClickAlert() {
-                this.overlay.classList.add('active');
-                setTimeout(() => {
-                    this.overlay.classList.remove('active');
-                }, 1000);
-            }
-            
-            triggerLongPressAlert() {
-                this.overlay.classList.add('active');
-                setTimeout(() => {
-                    this.overlay.classList.remove('active');
-                }, 1000);
-            }
-            
-            triggerSaveAlert() {
-                this.overlay.classList.add('active');
-                setTimeout(() => {
-                    this.overlay.classList.remove('active');
-                }, 1500);
-            }
-            
-            triggerPrintAlert() {
-                this.overlay.classList.add('active');
-                setTimeout(() => {
-                    this.overlay.classList.remove('active');
-                }, 2000);
-            }
-            
-            triggerSelectAllAlert() {
-                this.overlay.classList.add('active');
-                setTimeout(() => {
-                    this.overlay.classList.remove('active');
-                }, 1000);
-            }
-            
-            triggerInactivityAlert() {
-                this.overlay.classList.add('active');
-                setTimeout(() => {
-                    this.overlay.classList.remove('active');
-                }, 1000);
-            }
-            
-            showRecordingWarning() {
-                this.recordingWarning.style.display = 'block';
-                setTimeout(() => {
-                    this.recordingWarning.style.display = 'none';
-                }, 5000);
-            }
-            
-            showCameraWarning() {
-                this.cameraWarning.style.display = 'block';
-                setTimeout(() => {
-                    this.cameraWarning.style.display = 'none';
-                }, 5000);
-            }
-            
-            lockApplication() {
-                document.body.innerHTML = `
-                    <div style="
-                        position: fixed;
-                        top: 0;
-                        left: 0;
-                        width: 100%;
-                        height: 100%;
-                        background: #000;
-                        color: #ff0000;
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        font-family: 'Courier New', monospace;
-                        font-size: 24px;
-                        z-index: 100000;
-                    ">
-                        <div style="text-align: center;">
-                            <h1>🚫 SECURITY BREACH DETECTED</h1>
-                            <p>Multiple screenshot attempts detected.</p>
-                            <p>Application locked for security.</p>
-                            <p>Please refresh the page to continue.</p>
-                        </div>
-                    </div>
-                `;
-            }
-        }
-        
-        // Initialize anti-screenshot protection
-        const antiScreenshot = new AntiScreenshotProtection();
-        
-        // HARDWARE-LEVEL PROTECTION ENHANCEMENTS
-        
-        // Update screenshot markers with current timestamp
-        function updateScreenshotMarkers() {
-            const markers = document.querySelector('.screenshot-markers');
-            if (markers) {
-                markers.setAttribute('data-timestamp', Date.now().toString());
-            }
-        }
-        
-        // Update markers every 100ms
-        setInterval(updateScreenshotMarkers, 100);
-        
-        // Dynamic content protection
-        function scrambleContent() {
-            const messages = document.querySelectorAll('.message-content');
-            messages.forEach(message => {
-                // Add invisible characters that confuse OCR
-                const originalText = message.textContent;
-                const scrambledText = originalText.split('').map(char => {
-                    // Add zero-width characters randomly
-                    return char + (Math.random() > 0.5 ? '\u200B' : '');
-                }).join('');
-                message.textContent = scrambledText;
-            });
-        }
-        
-        // Scramble content every 2 seconds
-        setInterval(scrambleContent, 2000);
-        
-        // Enhanced screenshot detection using multiple methods
-        function enhancedScreenshotDetection() {
-            // Method 1: Monitor for rapid visibility changes
-            let visibilityChanges = 0;
-            const originalVisibilityChange = document.addEventListener;
-            
-            document.addEventListener('visibilitychange', () => {
-                visibilityChanges++;
-                if (visibilityChanges > 3) {
-                    triggerHardwareProtection();
-                }
-            });
-            
-            // Method 2: Monitor for window size changes (snipping tool)
-            let sizeChanges = 0;
-            window.addEventListener('resize', () => {
-                sizeChanges++;
-                if (sizeChanges > 5) {
-                    triggerHardwareProtection();
-                }
-            });
-            
-            // Method 3: Monitor for focus changes
-            let focusChanges = 0;
-            window.addEventListener('blur', () => {
-                focusChanges++;
-                if (focusChanges > 3) {
-                    triggerHardwareProtection();
-                }
-            });
-            
-            // Method 4: Monitor for clipboard access
-            document.addEventListener('copy', (e) => {
-                e.preventDefault();
-                triggerHardwareProtection();
-                return false;
-            });
-        }
-        
-        // Trigger hardware-level protection
-        function triggerHardwareProtection() {
-            // Activate all protection layers
-            const protectionLayers = [
-                '.content-scrambler',
-                '.dynamic-watermark', 
-                '.screenshot-protection',
-                '.camera-confusion',
-                '.hardware-protection'
-            ];
-            
-            protectionLayers.forEach(selector => {
-                const layer = document.querySelector(selector);
-                if (layer) {
-                    layer.style.opacity = '0.1';
-                    layer.style.animationDuration = '0.05s';
-                    
-                    setTimeout(() => {
-                        layer.style.opacity = '';
-                        layer.style.animationDuration = '';
-                    }, 3000);
-                }
-            });
-            
-            // Show security alert
-            const overlay = document.getElementById('antiPhotoOverlay');
-            if (overlay) {
-                overlay.classList.add('active');
-                setTimeout(() => {
-                    overlay.classList.remove('active');
-                }, 5000);
-            }
-            
-            // Report to server
-            if (window.secureChat && window.secureChat.reportSecurityEvent) {
-                window.secureChat.reportSecurityEvent('HARDWARE_PROTECTION_TRIGGERED', {
-                    method: 'enhanced_detection',
-                    timestamp: Date.now()
-                });
-            }
-        }
-        
-        // Initialize enhanced protection
-        enhancedScreenshotDetection();
-        
-        // Monitor for external screenshot tools
-        function detectExternalTools() {
-            // Check for common screenshot tool signatures
-            const userAgent = navigator.userAgent.toLowerCase();
-            const suspiciousTools = [
-                'snipping', 'snip', 'screenshot', 'capture', 'recording',
-                'obs', 'bandicam', 'fraps', 'camtasia', 'screencast'
-            ];
-            
-            suspiciousTools.forEach(tool => {
-                if (userAgent.includes(tool)) {
-                    triggerHardwareProtection();
-                }
-            });
-            
-            // Monitor for rapid mouse movements (snipping tool selection)
-            let mouseMovements = 0;
-            document.addEventListener('mousemove', () => {
-                mouseMovements++;
-                if (mouseMovements > 100) {
-                    triggerHardwareProtection();
-                    mouseMovements = 0;
-                }
-            });
-        }
-        
-        // Initialize external tool detection
-        detectExternalTools();
-        
-        // Continuous protection monitoring
-        setInterval(() => {
-            // Check for suspicious activity patterns
-            const now = Date.now();
-            
-            // Reset counters periodically
-            if (now % 10000 === 0) { // Every 10 seconds
-                visibilityChanges = 0;
-                sizeChanges = 0;
-                focusChanges = 0;
-                mouseMovements = 0;
-            }
-        }, 1000);
-    </script>
 </body>
-</html> 
+</html>
